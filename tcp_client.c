@@ -1,8 +1,12 @@
 #include "string.h"
+
+#include "pico/stdlib.h"
 #include "pico/cyw43_arch.h"
+#include "pico/malloc.h"
 
 #include "lwip/pbuf.h"
 #include "lwip/tcp.h"
+
 #include "tcp_client.h"
 
 const char TCP_SERVER_IP[] = "192.168.2.19";
@@ -128,7 +132,6 @@ bool tcp_client_connect(TCP_CLIENT_T* client) {
         
     }
     printf("DONE");
-
 
     return true;
 }
