@@ -1,11 +1,9 @@
 #include "string.h"
 #include "pico/cyw43_arch.h"
 
-
 #include "lwip/pbuf.h"
 #include "lwip/tcp.h"
 #include "tcp_client.h"
-
 
 const char TCP_SERVER_IP[] = "192.168.2.19";
 const u16_t TCP_PORT = 9988;
@@ -18,8 +16,50 @@ static err_t tcp_client_sent(void* arg, struct tcp_pcb* tpcb, u16_t len) {
     return ERR_OK;
 }
 
-static err_t tcp_client_recv(void* arg, struct tcp_pcb* tpcb, struct pbuf* p, err_t err) {
-    printf("RECEIVED DATA\n");
+static err_t tcp_client_recv(void* arg, struct tcp_pcb* tpcb, struct pbuf* packet_buffer, err_t err) {
+    /*
+    API implementation details are in the section 'Receiving TCP data':
+    https://www.nongnu.org/lwip/2_0_x/raw_api.html
+    */
+    TCP_CLIENT_T* client = (TCP_CLIENT_T*)arg;
+
+    cyw43_arch_lwip_check();
+    if (!packet_buffer) {
+        // The callback function will be passed a NULL pbuf 
+        // to indicate that the remote host has closed the connection.
+        printf("CONNECTION CLOSED");
+    }
+
+    if (packet_buffer->tot_len > 0) {
+        printf("recv %d err %d\n", packet_buffer->tot_len, err);
+
+        for (struct pbuf* packet = packet_buffer; packet != NULL; packet = packet->next) {
+
+            const uint8_t* bytes = (uint8_t*)packet_buffer->payload;
+
+            for (int i = 0; i < packet->len; i++) {
+                if ((i & 0x0f) == 0) {
+                    printf("\n");
+                }
+                else if ((i & 0x07) == 0) {
+                    printf(" ");
+                }
+                printf("%02x ", bytes[i]);
+            }
+            printf("\n");
+        }
+
+        // API requires tcp_recved be called within the recv callback
+        // The len argument indicates the length of the received data.
+        tcp_recved(tpcb, packet_buffer->tot_len);
+    }
+
+    // If there are no errors and the callback function is to return
+    // ERR_OK, then it must free the pbuf. Otherwise, it must not
+    // free the pbuf so that lwIP core code can store it.
+    pbuf_free(packet_buffer);
+
+
     return ERR_OK;
 }
 
@@ -63,8 +103,6 @@ TCP_CLIENT_T* tcp_client_init(void) {
 
 bool tcp_client_connect(TCP_CLIENT_T* client) {
 
-
-
     printf("Connecting to %s port %d\n", ip4addr_ntoa(&client->remote_addr), TCP_PORT);
     cyw43_arch_lwip_begin();
     err_t err = tcp_connect(client->tcp_pcb, &client->remote_addr, TCP_PORT, tcp_client_on_connected);
@@ -73,17 +111,11 @@ bool tcp_client_connect(TCP_CLIENT_T* client) {
         return false;
     }
 
-    tcpwnd_size_t bufsize = client->tcp_pcb->snd_buf;
-    printf("send buf size %d", bufsize);
-
     err = tcp_write(client->tcp_pcb, client->buffer, client->buffer_len, TCP_WRITE_FLAG_COPY);
     if (err != ERR_OK) {
         printf("WRITE ERROR CODE %d", err);
         return false;
     }
-
-    bufsize = client->tcp_pcb->snd_buf;
-    printf("send buf size %d", bufsize);
 
     err = tcp_output(client->tcp_pcb);
     if (err != ERR_OK) {
@@ -91,9 +123,6 @@ bool tcp_client_connect(TCP_CLIENT_T* client) {
         return false;
     }
     cyw43_arch_lwip_end();
-
-    bufsize = client->tcp_pcb->snd_buf;
-    printf("send buf size %d", bufsize);
 
     while (true) {
         if (!client->tcp_pcb->connected) {
