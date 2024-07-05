@@ -35,18 +35,15 @@ static err_t tcp_client_recv(void* arg, struct tcp_pcb* tpcb, struct pbuf* packe
 
         for (struct pbuf* packet = packet_buffer; packet != NULL; packet = packet->next) {
 
-            const uint8_t* bytes = (uint8_t*)packet_buffer->payload;
+            const char* payload = (char*)packet->payload;
+            char message[packet->len];
+            strncpy(message, payload, packet->len);
+            printf("%s\n", message);
 
-            for (int i = 0; i < packet->len; i++) {
-                if ((i & 0x0f) == 0) {
-                    printf("\n");
-                }
-                else if ((i & 0x07) == 0) {
-                    printf(" ");
-                }
-                printf("%02x ", bytes[i]);
+            if (strcmp(message, "HELLO FROM GO") == 0) {
+                printf("MESSAGE ACKNOWLEDGED, COMPLETING");
+                client->complete = true;
             }
-            printf("\n");
         }
 
         // API requires tcp_recved be called within the recv callback
@@ -124,18 +121,13 @@ bool tcp_client_connect(TCP_CLIENT_T* client) {
     }
     cyw43_arch_lwip_end();
 
-    while (true) {
-        if (!client->tcp_pcb->connected) {
-            break;
-        }
-        else {
-            printf("waiting\n");
-            tcpwnd_size_t bufsize = client->tcp_pcb->snd_buf;
-            printf("send buf size %d", bufsize);
-            sleep_ms(1000);
-        }
+    while (!client->complete) {
+        
+        printf("waiting\n");    
+        sleep_ms(1000);
+        
     }
-    printf("WROTE TO BUFFER");
+    printf("DONE");
 
 
     return true;
